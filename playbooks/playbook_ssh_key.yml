@@ -1,0 +1,33 @@
+---
+- hosts: localhost
+  #collections: ansible_collections
+  become: false
+  connection: local
+  gather_facts: False
+  tasks:
+
+    - name: clean up a key if exists
+      ec2_key:
+        state: absent
+        name: "{{ ssh_key_name }}"
+        region: "{{ region }}"
+        aws_access_key: "{{aws_access_key}}"
+        aws_secret_key: "{{aws_secret_key}}"
+      ignore_errors: yes
+
+    - name: Create a new EC2 key
+      ec2_key:
+        force: yes
+        name: "{{ ssh_key_name }}"
+        region: "{{ region }}"
+        aws_access_key: "{{aws_access_key}}"
+        aws_secret_key: "{{aws_secret_key}}"
+      register: ec2_sshkey_result
+
+    - name: Save private key
+      copy: content="{{ ec2_sshkey_result.key.private_key }}" dest="../{{ ssh_key_name }}" mode=0600
+      when: ec2_sshkey_result.changed
+
+    - name: debug vars
+      debug: msg="{{ region }}, {{ ssh_key_name }} {{ ec2_sshkey_result }}"
+

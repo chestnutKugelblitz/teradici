@@ -1,0 +1,27 @@
+---
+- hosts: localhost
+  #collections: ansible_collections
+  become: false
+  connection: local
+  gather_facts: False
+  tasks:
+    - name: getting VPC info
+      amazon.aws.ec2_vpc_subnet_info:
+        ec2_access_key: "{{ aws_access_key }}"
+        ec2_secret_key: "{{ aws_secret_key }}"
+        region: "{{ region }}"
+        filters:
+          default-for-az: True
+      register: subnetInfo
+
+    - name: setting list of subnets
+      set_fact:
+        subnets_list: "{{ subnetInfo.subnets|map(attribute='subnet_id')|list }}"
+        cacheable: yes
+
+#    - name: print them
+#      #community.aws.aws_region_info:
+#      #register: regions
+#      debug:
+#        #msg: "{{ community.aws.aws_region_facts }}"
+#        msg: "{{ subnets_list }}"

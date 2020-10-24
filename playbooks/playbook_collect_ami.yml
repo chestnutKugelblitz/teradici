@@ -1,0 +1,21 @@
+---
+- hosts: localhost
+  #collections: ansible_collections
+  become: false
+  connection: local
+  gather_facts: False
+  tasks:
+  - name: gather information about Ubuntu 20.04 AMIs published by Canonical (099720109477)
+    amazon.aws.ec2_ami_info:
+      owners: 099720109477
+      region: "{{ region }}"
+      filters:
+        name: "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"
+    register: ami_images
+
+#ToDo: filter dict
+  - name: setting dict of AMI images
+    set_fact:
+      ami_dict: "{{ ami_images.images }}"
+      cacheable: yes
+

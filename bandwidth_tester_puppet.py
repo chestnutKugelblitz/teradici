@@ -7,16 +7,13 @@ import sys
 import time
 import argparse
 
-#ToDo get it from argParser, commandline/ansible
 host2BindAdress = '0.0.0.0'
 commandPort = 1919
 dataReportPort = 1921
+#host2BindAdress = sys.argv[1]
+#commandPort = sys.argv[2]
+#dataReportPort = sys.argv[3]
 
-#iperfServerPort = 5201
-
-
-global testResults
-global awaitingResults
 testResults = {}
 awaitingResults = True
 
@@ -28,8 +25,6 @@ def launchIperf3Client(**kwargs):
     client.port = kwargs['iperf3ServerPort']
     client.num_streams = kwargs['numStreams']
     res = client.run()
-    global testResults
-    global awaitingResults
     awaitingResults = False
     testResults = res.json
 
@@ -46,14 +41,10 @@ def launchIperf3Server(**kwargs):
     except:
         print('it fails!')
     print("writing results")
-    global testResults
-    #global awaitingResults
     print(type(testResults))
     testResults = res
 
 def dataSender(conn,_):
-    global testResults
-    global awaitingResults
     pickledResults = pickle.dumps(testResults)
     print("launch sender to send results: {testResults}")
     conn.send(pickledResults)
@@ -83,14 +74,10 @@ def dataReceiver(conn,_):
         print("setting name of client thread")
         payloadFunc.setName('iperf3_client')
 
-    #Todo: do I really need this?
     elif unPickledConf['mode'] == 'collect_results':
-        global awaitingResults
-        global testResults
         if awaitingResults == True:
             print('still waiting results')
         else:
-            #Todo: cleanUP
             print(8*"\|/")
             print(f"+++test results is: {testResults}")
 
@@ -102,7 +89,6 @@ def dataReceiver(conn,_):
         payloadFunc.start()
 
 def netLauncher(sock,payload):
-    global testResults
     while True:
         conn,addr = sock.accept()
         print('connected:', addr)
@@ -127,7 +113,6 @@ def main():
     senderThread = threading.Thread(target=netLauncher, args=(sock2, 'dataSender'))
     senderThread.setName('senderLauncher')
     senderThread.start()
-    global awaitingResults
     while awaitingResults is True:
         time.sleep(5)
     print(awaitingResults)

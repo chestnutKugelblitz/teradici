@@ -1,0 +1,19 @@
+---
+#Finished
+- hosts: localhost
+  #collections: ansible_collections
+  become: false
+  connection: local
+  gather_facts: False
+  tasks:
+    - name: Register regions
+      community.aws.aws_region_info:
+        filters:
+          "opt_in_status": "opt-in-not-required"
+      register: regions
+
+    - name: setting list of avaible regions
+      set_fact:
+          availabile_regions: "{{ regions.regions|map(attribute='region_name')|list }}"
+          cacheable: yes
+
