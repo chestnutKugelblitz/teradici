@@ -6,10 +6,13 @@ import threading
 import sys
 import time
 
+#ToDo get it from argParser, commandline/ansible
 host2BindAdress = sys.argv[1]
-commandPort = sys.argv[2]
-dataReportPort = sys.argv[3]
+commandPort = int(sys.argv[2])
+dataReportPort = int(sys.argv[3])
 
+global testResults
+global awaitingResults
 testResults = {}
 awaitingResults = True
 
@@ -17,10 +20,12 @@ def launchIperf3Client(**kwargs):
     print(f"iperf client, args: {kwargs}")
     client = iperf3.Client()
     client.duration = kwargs['durationSecs']
-    client.server_hostname = kwargs['iperf3ServerHost']
+    client.server_hostname = kwargs['iperf3IntServer']
     client.port = kwargs['iperf3ServerPort']
     client.num_streams = kwargs['numStreams']
     res = client.run()
+    global testResults
+    global awaitingResults
     awaitingResults = False
     testResults = res.json
 
@@ -37,10 +42,14 @@ def launchIperf3Server(**kwargs):
     except:
         print('it fails!')
     print("writing results")
+    global testResults
+    #global awaitingResults
     print(type(testResults))
     testResults = res
 
-def dataSender(conn,_):
+def resultSender(conn):
+    global testResults
+    global awaitingResults
     pickledResults = pickle.dumps(testResults)
     print("launch sender to send results: {testResults}")
     conn.send(pickledResults)
@@ -48,7 +57,7 @@ def dataSender(conn,_):
     print('Send Successful')
     conn.close()
 
-def dataReceiver(conn,_):
+def commandReceiver(conn):
     print("launch receiver")
     pickledConf = b''
     while True:
@@ -70,11 +79,14 @@ def dataReceiver(conn,_):
         print("setting name of client thread")
         payloadFunc.setName('iperf3_client')
 
+    #Todo: do I really need this?
     elif unPickledConf['mode'] == 'collect_results':
+        global awaitingResults
+        global testResults
         if awaitingResults == True:
             print('still waiting results')
         else:
-            print(8*"\|/")
+            #Todo: cleanUP
             print(f"+++test results is: {testResults}")
 
     else:
@@ -85,10 +97,12 @@ def dataReceiver(conn,_):
         payloadFunc.start()
 
 def netLauncher(sock,payload):
+    global testResults
     while True:
         conn,addr = sock.accept()
         print('connected:', addr)
-        dataReceiverThread = threading.Thread(target=eval(payload),args=(conn,addr))
+        #ToDo write it via dict
+        dataReceiverThread = threading.Thread(target=eval(payload),args=(conn,))
         dataReceiverThread.start()
 
 def main():
@@ -97,18 +111,20 @@ def main():
     print("test from main()")
     try:
         sock1.bind((host2BindAdress, commandPort))
+        #to avoid racing conditions, limit connections to 1
         sock1.listen(1)
         sock2.bind((host2BindAdress, dataReportPort))
         sock2.listen(1)
     except:
         print("cant bind to socket!")
         sys.exit(1)
-    listenerThread = threading.Thread(target=netLauncher, args=(sock1,'dataReceiver'))
+    listenerThread = threading.Thread(target=netLauncher, args=(sock1,'commandReceiver'))
     listenerThread.setName('listenerLauncher')
     listenerThread.start()
-    senderThread = threading.Thread(target=netLauncher, args=(sock2, 'dataSender'))
+    senderThread = threading.Thread(target=netLauncher, args=(sock2, 'resultSender'))
     senderThread.setName('senderLauncher')
     senderThread.start()
+    global awaitingResults
     while awaitingResults is True:
         time.sleep(5)
     print(awaitingResults)
