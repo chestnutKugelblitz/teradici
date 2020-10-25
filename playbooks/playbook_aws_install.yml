@@ -6,27 +6,10 @@
   gather_facts: False
   vars:
     #todo: add it auto
-    keypair: Teradici
+    #keypair: Teradici
     #todo: add it by keys
-    instance_type: t2.micro
+    #instance_type: t2.micro
   tasks:
-    - name: debug
-      debug: msg="{{hostvars[inventory_hostname][item]}}"
-      with_items: var_list
-      when: hostvars[inventory_hostname][item] is defined
-
-#    - name: clean up a key if exists
-#      ec2_key:
-#        state: absent
-#        name: bandwidth_tester_ssh_key
-#      ignore_errors: yes
-#
-#    - name: Create a new EC2 key
-#      ec2_key:
-#        force: yes
-#        name: bandwidth_tester_ssh_key
-#        region: "{{ region }}"
-#      register: ec2_sshkey_result
 
     - name: get info about subnet
       amazon.aws.ec2_vpc_subnet_info:
@@ -60,47 +43,237 @@
           cidr_ip: 0.0.0.0/0
           rule_desc: allow required traffic
 
-
-    - name: setting up EC2 instance
-      amazon.aws.ec2:
-        aws_access_key: "{{aws_access_key}}"
-        aws_secret_key: "{{aws_secret_key}}"
-        key_name: "{{ ssh_key_name }}"
-        group: "bandwidth_tester_group"
-        instance_type: "{{ instance_type }}"
-        image: "{{ image }}"
-        wait: true
-        region: "{{ region }}"
-        vpc_subnet_id:  "{{vpc_subnet}}"
-        assign_public_ip: yes
-        count: 2
-      register: ec2
+#
+#- name: start an instance with a cpu_options
+#  community.aws.ec2_instance:
+#    name: "public-cpuoption-instance"
+#    vpc_subnet_id: subnet-5ca1ab1e
+#    tags:
+#      Environment: Testing
+#    instance_type: c4.large
+#    volumes:
+#    - device_name: /dev/sda1
+#      ebs:
+#        delete_on_termination: true
+#    cpu_options:
+#        core_count: 1
+#        threads_per_core: 1
 
     - name: debug
-      debug: msg="{{ec2}}"
+      debug:
+        msg: "launch_mode_with_vcpu={{ launch_mode_with_vcpu }}"
+
+    - name: setting up EC2 instance - server. Custom vCpu amount. Launch it in the background
+      community.aws.ec2_instance:
+        name: "iperf3-server"
+        vpc_subnet_id: "{{vpc_subnet}}"
+        key_name: "{{ ssh_key_name }}"
+        network:
+          assign_public_ip: true
+        security_group: "bandwidth_tester_group"
+        image_id: "{{ image }}"
+        region: "{{ region }}"
+        cpu_options:
+          core_count: "{{ vcpu_server }}"
+          threads_per_core: 1
+        instance_type: "{{ instance_type_server }}"
+        wait: no
+      register: ec2_server_vcpu
+      when: launch_mode_with_vcpu
+
+    - name: setting up EC2 instance - client. Custom vCpu amount. Launch it in the background
+      community.aws.ec2_instance:
+        name: "iperf3-client"
+        vpc_subnet_id: "{{vpc_subnet}}"
+        key_name: "{{ ssh_key_name }}"
+        network:
+          assign_public_ip: true
+        security_group: "bandwidth_tester_group"
+        image_id: "{{ image }}"
+        region: "{{ region }}"
+        cpu_options:
+          core_count: "{{ vcpu_client }}"
+          threads_per_core: 1
+        instance_type: "{{ instance_type_client }}"
+        wait: no
+      register: ec2_client_vcpu
+      when: launch_mode_with_vcpu
+
+    - name: setting up EC2 instance - server. Standard vCPU settings. Launch it in the background
+      community.aws.ec2_instance:
+        name: "iperf3-server"
+        vpc_subnet_id: "{{vpc_subnet}}"
+        key_name: "{{ ssh_key_name }}"
+        network:
+          assign_public_ip: true
+        security_group: "bandwidth_tester_group"
+        image_id: "{{ image }}"
+        region: "{{ region }}"
+#        cpu_options:
+#          core_count: "{{ vcpu_server }}"
+#          threads_per_core: 1
+        instance_type: "{{ instance_type_server }}"
+        wait: no
+      register: ec2_server_standard
+      when: not launch_mode_with_vcpu
+
+    - name: setting up EC2 instance - client. Standard vCPU settings. Launch it in the background
+      community.aws.ec2_instance:
+        name: "iperf3-client"
+        vpc_subnet_id: "{{vpc_subnet}}"
+        key_name: "{{ ssh_key_name }}"
+        network:
+          assign_public_ip: true
+        security_group: "bandwidth_tester_group"
+        image_id: "{{ image }}"
+        region: "{{ region }}"
+#        cpu_options:
+#          core_count: "{{ vcpu_client }}"
+#          threads_per_core: 1
+        instance_type: "{{ instance_type_client }}"
+        wait: no
+      register: ec2_client_standard
+      when: not launch_mode_with_vcpu
+
+#    - name: debug
+#      debug:
+#        msg: "======server: ==== {{ec2_server_standard}}, ++++ {{ ec2_server_vcpu }} \n client: ==== {{ ec2_client_standard }}, +++ {{ ec2_client_vcpu }}"
+
+    - name: setting up ec2 server results var - vcpu
+      set_fact:
+        ec2_server: "{{ ec2_server_vcpu }}"
+      when: launch_mode_with_vcpu
+
+    - name: setting up ec2 server results var - standard instance type
+      set_fact:
+        ec2_server: "{{ ec2_server_standard  }}"
+      when: not launch_mode_with_vcpu
+
+
+    - name: setting up ec2 client results var - vcpu
+      set_fact:
+        ec2_client: "{{ ec2_client_vcpu }}"
+      when: launch_mode_with_vcpu
+
+    - name: setting up ec2 client results var - - standard instance type
+      set_fact:
+        ec2_client: "{{ ec2_client_standard }}"
+      when: not launch_mode_with_vcpu
+
+
 
   #    - name: debug
-#      debug: msg="{{vpc_id}}"
-    - name: setting var with hosts of ec2 machines
+#      debug:
+#        msg: "server: {{ec2_server}}, client: {{ec2_client}}"
+
+#  # we use this approach due wait_for_connection doesn't support one timeout for several instances
+#    - name: Let AWS create instances
+#      pause:
+#        seconds: 20
+
+    - name: debug
+      debug:
+        msg: "server: {{ec2_server}}, client: {{ec2_client}}"
+
+
+
+    - name: setting var with ec2 ids - server
       set_fact:
-        ec2hosts: "{{ ec2.instances | map(attribute='public_dns_name')|list }}"
+        server_ec2_id: "{{ ec2_server.instance_ids[0] }}"
         cacheable: yes
 
-    - name: setting var with ec2 ids
+    - name: setting var with ec2 ids - server
       set_fact:
-        ec2ids: "{{ ec2.instances | map(attribute='id')|list }}"
+        client_ec2_id: "{{ ec2_client.instance_ids[0] }}"
+        cacheable: yes
+
+
+#    - name: setting up facts for the server - 1
+#      community.aws.ec2_instance_info:
+#        region: "{{ region }}"
+#        instance_ids: "{{ server_ec2_id }}"
+#      register: ec2_server_info1
+##      until: ec2_server_info.metadata_options.state is applied
+##      retries: 40
+##      delay: 5
+#
+#    - name: server info
+#      debug:
+#        msg: "server info is: \n\n=============\n {{ ec2_server_info1 }} \n=================="
+#
+#
+#    - name: server info
+#      debug:
+#        msg: "server info is: \n\n++++\n {{ ec2_server_info1.instances[0].metadata_options.state }} \n++++"
+#
+#    - name: Gather information about a particular instance using ID
+#      community.aws.ec2_instance_info:
+#        region: "{{ region }}"
+#        instance_ids:
+#          - "{{ item }}"
+#      with_items:
+#        - "{{ client_ec2_id }}"
+#        - "{{ server_ec2_id }}"
+#      register: ec2_info
+
+#    - name: debug-2
+#      debug:
+#        msg: "{{ ec2_info1 }}"
+#
+#    # we use this approach due wait_for_connection doesn't support one timeout for several instances
+#    - name: Let AWS setting up both ec2 instances
+#      pause:
+#        seconds: 120
+
+    - name: setting up facts for the server - we're waiting until it will be up
+      community.aws.ec2_instance_info:
+        region: "{{ region }}"
+        instance_ids: "{{ server_ec2_id }}"
+      register: ec2_server_info
+      until: ec2_server_info.instances[0].metadata_options.state == 'applied'
+      retries: 40
+      delay: 5
+
+    - name: server info
+      debug:
+        msg: "{{ ec2_server_info }}"
+
+    - name: setting up facts for the client - we're waiting until it will be up
+      community.aws.ec2_instance_info:
+        region: "{{ region }}"
+        instance_ids: "{{ client_ec2_id }}"
+      register: ec2_client_info
+      until: ec2_client_info.instances[0].metadata_options.state == 'applied'
+      retries: 40
+      delay: 5
+
+
+    - name: setting up var with public DNS name of EC2 instance - server
+      set_fact:
+        ext_server: "{{ ec2_server_info.instances[0].public_dns_name }}"
+        cacheable: yes
+
+    - name: setting up public DNS name of EC2 instance - client
+      set_fact:
+        ext_client: "{{ ec2_client_info.instances[0].public_dns_name }}"
+        cacheable: yes
+
+
+    - name: setting up var with private DNS name of EC2 instance - server
+      set_fact:
+        int_server: "{{ ec2_server_info.instances[0].private_dns_name }}"
+        cacheable: yes
+
+    - name: setting up var with private DNS name of EC2 instance - client
+      set_fact:
+        int_client: "{{ ec2_client_info.instances[0].private_dns_name }}"
         cacheable: yes
 
     - name: Add created ec2 instances into host group
       add_host: hostname={{item}} groupname=bandwidth_tester_group
-      with_items: "{{ ec2hosts }}"
-
-#    - name: debug ssh
-#      debug: msg="ec2_sshkey_result {{ ec2_sshkey_result }}"
-#
-#    - name: Save private key
-#      copy: content="{{ ec2_sshkey_result.key.private_key }}" dest="./bandwidth_tester.pem" mode=0600
-#      when: ec2_sshkey_result.changed
+      with_items:
+        - "{{ ext_server }}"
+        - "{{ ext_client }}"
 
   # we use this approach due wait_for_connection doesn't support one timeout for several instances
     - name: Let AWS boots both ec2 instances
@@ -108,20 +281,122 @@
         seconds: 40
 
     - name: Wait for SSH to come up
-      delegate_to: "{{ item.public_dns_name }}"
+      delegate_to: "{{ item }}"
       wait_for_connection:
-        #delay: 60
         timeout: 300
-      loop: "{{ ec2.instances }}"
+      with_items:
+        - "{{ ext_server }}"
+        - "{{ ext_client }}"
 
-    - name: debug vars
-      debug: msg="vpc_id:{{vpc_id}} ec2hosts:{{ec2hosts}} ec2ids:{{ec2ids}}"
+  #
+#    - name: Gather information about a particular instance using ID
+#      community.aws.ec2_instance_info:
+#        region: "{{ region }}"
+#        instance_ids:
+#          - "{{ item }}"
+#      with_items:
+#        - "{{ client_ec2_id }}"
+#        - "{{ server_ec2_id }}"
+#      register: ec2_info2.metadata_options.state
+#      until:
+#
+#
+#
+#    - name: debug-3
+#      debug:
+#        msg: "{{ ec2_info2 }}"
+#
+#    - name: setting var with ext hosts of ec2 machines
+#      set_fact:
+#        ec2exthosts: "{{ ec2_info2 | map(attribute='public_dns_name')|list }}"
+#        cacheable: yes
+#
+#    - name: debug-4
+#      debug:
+#        msg: "{{ ec2exthosts }}"
+#
+#
+#      register: cleanup_sec_group
+#      retries: 20
+#      delay: 5
+#      until: cleanup_sec_group is not failed
+#
+#
+#                           "metadata_options": {
+#                         "state": "pending"
+#                            "state": "applied"
 
+
+#
+#
+#    - name:
+
+
+#
+#    - name: manual fail
+#      fail:
+#        msg: manual fail
+
+
+
+      #    - name: setting up EC2 instance
+#      amazon.aws.ec2:
+#        aws_access_key: "{{aws_access_key}}"
+#        aws_secret_key: "{{aws_secret_key}}"
+#        key_name: "{{ ssh_key_name }}"
+#        group: "bandwidth_tester_group"
+#        instance_type: "{{ instance_type }}"
+#        image: "{{ image }}"
+#        wait: true
+#        region: "{{ region }}"
+#        vpc_subnet_id:  "{{vpc_subnet}}"
+#        assign_public_ip: yes
+#        count: 2
+#      register: ec2
+
+#    - name: debug
+#      debug: msg="{{ec2}}"
+#
+#
+#    - name: setting var with hosts of ec2 machines
+#      set_fact:
+#        ec2exthosts: "{{ ec2.instances | map(attribute='public_dns_name')|list }}"
+#        cacheable: yes
+#
+#    - name: setting var with hosts of ec2 machines
+#      set_fact:
+#        ec2inthosts: "{{ ec2.instances | map(attribute='private_dns_name')|list }}"
+#        cacheable: yes
+#
+#
+#    - name: setting var with ec2 ids
+#      set_fact:
+#        ec2ids: "{{ ec2.instances | map(attribute='id')|list }}"
+#        cacheable: yes
+#
+#    - name: Add created ec2 instances into host group
+#      add_host: hostname={{item}} groupname=bandwidth_tester_group
+#      with_items: "{{ ec2exthosts }}"
+#
+#
+#  # we use this approach due wait_for_connection doesn't support one timeout for several instances
+#    - name: Let AWS boots both ec2 instances
+#      pause:
+#        seconds: 40
+#
+#    - name: Wait for SSH to come up
+#      delegate_to: "{{ item.public_dns_name }}"
+#      wait_for_connection:
+#        timeout: 300
+#      loop: "{{ ec2.instances }}"
+#
+#    - name: debug vars
+#      debug: msg="vpc_id:{{vpc_id}} ec2hosts:{{ec2exthosts}} ec2ids:{{ec2ids}}"
+#
 - hosts: bandwidth_tester_group
   vars:
     ansible_ssh_private_key_file: "{{ ssh_key_name }}"
   user: ubuntu
-  #sudo: true
   tasks:
 
     - name: apt update
@@ -148,12 +423,16 @@
       git:
         repo: "{{ git_repo }}"
         dest: "{{ git_puppet_dest }}"
-        #version: release-0.22
+        #Todo: delete it
+        #version: "6b3df448a2345a7d8bc499b3fd88c969f27d3d86"
 
     - name: Install specified python requirements
       pip:
         requirements: /home/ubuntu/bandwidth_tester/requirements_puppet.txt
       become: yes
 
+    - name: launch command
+      debug: msg="cd /home/ubuntu/bandwidth_tester; nohup /home/ubuntu/bandwidth_tester/bandwidth_tester_puppet.py {{ iperf3_bind_address }} {{ command_port }} {{ data_port }} </dev/null >/dev/null 2>&1 &"
+
     - name: Run a puppet program in the background
-      shell: cd /home/ubuntu/bandwidth_tester; nohup /home/ubuntu/bandwidth_tester/bandwidth_tester_puppet.py </dev/null >/dev/null 2>&1 &
+      shell: "cd /home/ubuntu/bandwidth_tester; nohup /home/ubuntu/bandwidth_tester/bandwidth_tester_puppet.py {{ iperf3_bind_address }} {{ command_port }} {{ data_port }} </dev/null >/dev/null 2>&1 &"

@@ -5,14 +5,10 @@ import socket
 import threading
 import sys
 import time
-import argparse
 
-host2BindAdress = '0.0.0.0'
-commandPort = 1919
-dataReportPort = 1921
-#host2BindAdress = sys.argv[1]
-#commandPort = sys.argv[2]
-#dataReportPort = sys.argv[3]
+host2BindAdress = sys.argv[1]
+commandPort = sys.argv[2]
+dataReportPort = sys.argv[3]
 
 testResults = {}
 awaitingResults = True

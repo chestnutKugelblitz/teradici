@@ -3,10 +3,24 @@ import ansible_runner
 import datetime
 import argparse
 import sys
-import json
-from perf_tester_modules import ini_parser, commander, iperf_receiver
+from perf_tester_modules import ini_parser
+import random
+from distutils.util import strtobool
 
-clientHost = ini_parser.returnVar('iperf3_client_host','connections')
+
+#from perf_tester_modules import commander
+#ToDo: rewrite?
+try:
+    from perf_tester_modules import commander
+except:
+    pass
+
+try:
+    from perf_tester_modules import iperf_receiver
+except:
+    pass
+
+#clientHost = ini_parser.returnVar('iperf3_client_host','connections')
 
 awsCreds = {
     'aws_access_key' : ini_parser.returnVar('aws_access_key','aws'),
@@ -14,7 +28,7 @@ awsCreds = {
 }
 
 sshCreds = {
-    'path2folder_with_ssh_key': ini_parser.returnVar('path2folder_with_ssh_key','aws'),
+    #'path2folder_with_ssh_key': ini_parser.returnVar('path2folder_with_ssh_key','aws'),
     'ssh_key_name': ini_parser.returnVar('ssh_key_name','aws'),
 }
 
@@ -30,6 +44,16 @@ firewallSettings = {
 'data_port': int(ini_parser.returnVar('data_port','connections')),
 'command_port': int(ini_parser.returnVar('command_port','connections')),
 }
+
+host2BindAdress = {'iperf3_bind_address' : ini_parser.returnVar('iperf3_bind_address','iperf3') }
+
+# def str2Bool(strVar):
+#     """
+#     simply converts text to bool
+#     :param strVar: Yes/True/No/False/etc in text
+#     :return: bool
+#     """
+#     return json.loads(strVar.lower())
 
 def list_regions():
     r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_collect_regions.yml',
@@ -59,18 +83,41 @@ def image(region):
     return dictAmi[1]['image_id']
 
 
-#ToDo: write it
-def cleanup(*args):
-    #Todo: Fix it, terrbile
-    if args[0]:
-        extraVars = locals()
-        print(f"extraVars= {extraVars}")
-        r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_clean_up.yml',
-                quiet=quietPlaybooks, extravars={**extraVars,**awsCreds})
-        return r.get_fact_cache('localhost')['ami_dict']
-    else:
-        pass
 
+def cleanup():
+    """
+
+    :return:
+    """
+    cleanupSettings = {}
+    try:
+        cleanupSettings = {
+            'ec2_server_id': ini_parser.returnVar('ec2_server_id', 'aws'),
+            'ec2_client_id': ini_parser.returnVar('ec2_client_id', 'aws'),
+            'vpc_id': ini_parser.returnVar('vpc_id', 'aws'),
+            'region': ini_parser.returnVar('region', 'aws'),
+        }
+    except:
+        print("can't cleanup. Looks like created AWS objects not defined in the list")
+        return False
+
+    r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_cleanup.yml',quiet=quietPlaybooks, extravars={**cleanupSettings,**awsCreds, **sshCreds})
+    print(f"r.rc={r.rc}")
+    if r.rc == 0:
+        ini_parser.deleteVar('ec2_server_id','aws')
+        ini_parser.deleteVar('ec2_client_id','aws')
+        ini_parser.deleteVar('vpc_id','aws')
+        ini_parser.deleteVar('iperf3_server_host','connections')
+        ini_parser.deleteVar('iperf3_client_host', 'connections')
+        ini_parser.deleteVar('region','aws')
+        ini_parser.deleteVar('iperf3_int_server','iperf3')
+        ini_parser.deleteVar('iperf3_int_client','iperf3')
+        ini_parser.writeVar('ready4test', 'False', 'connections')
+        print("I've just done a clean up job")
+        return True
+    else:
+        print("can't do clean up in the AWS side. Please do it manually")
+        return False
 
 def ssh_key_add(**kwargs):
     r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_ssh_key.yml',
@@ -79,7 +126,7 @@ def ssh_key_add(**kwargs):
 def sendCommands2Puppet():
     result = None
     status = False
-    if ready4test():
+    if ready4Test():
         sampleDict = {}
         commandsResult = []
         print("send commands to puppets")
@@ -99,51 +146,105 @@ def sendCommands2Puppet():
     return status, result
 
 def iperf():
+    if 'iperf_receiver' not in sys.modules:
+        from perf_tester_modules import iperf_receiver
+    if 'commander' not in sys.modules:
+        from perf_tester_modules import commander
     status, result = sendCommands2Puppet()
     print(result)
     if status:
         maxSpeed, maxSpeedHumanize = iperf_receiver.max_speed()
         print(f"max speed is: {maxSpeed} bytes/sec\n\nor, in the human form,{maxSpeedHumanize}/sec")
+        return maxSpeed
 
-def ready4test():
+def ready4Test():
     iniOptions = []
+    iniOptions.append(ini_parser.returnVar('ready4test', 'connections'))
     iniOptions.append(ini_parser.returnVar('iperf3_server_host', 'connections'))
     iniOptions.append(ini_parser.returnVar('iperf3_client_host', 'connections'))
-    iniOptions.append(ini_parser.returnVar('ready4test', 'connections'))
+    iniOptions.append(ini_parser.returnVar('iperf3_int_server', 'iperf3'))
+    iniOptions.append(ini_parser.returnVar('iperf3_int_client', 'iperf3'))
     if None in iniOptions:
-        return None
+        return False
     else:
-        if json.loads(iniOptions[2].lower()):
+        if strtobool(iniOptions[0]):
             return True
         else:
             return False
 
-def ec2_instance_launch(**kwargs):
+def launch(**kwargs):
     extraVars = locals()
-
+    print(
+        "I'm deploying two ec2 instances. It can take several minutes. If you want to observe a process, please use -v (verbose) key")
     ssh_key_add(**kwargs)
-
-    print("I'm deploying two ec2 instances. It can take several minutes. If you want to observe a process, please use -v (verbose) key")
-    r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_aws_install.yml', quiet=quietPlaybooks, extravars={**kwargs, **awsCreds, **sshCreds, **gitSettings, **firewallSettings})
+    if kwargs.get('launch_mode_with_vcpu') is None:
+        kwargs['launch_mode_with_vcpu'] = True
+    r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_aws_install.yml', quiet=quietPlaybooks, extravars={**kwargs, **awsCreds, **sshCreds, **gitSettings, **firewallSettings, **host2BindAdress})
     ini_parser.writeVar('ready4test', str(not r.rc), 'connections')
     if r.rc == 0:
-        ec2hosts = r.get_fact_cache('localhost')['ec2hosts']
         vpc_id = r.get_fact_cache('localhost')['vpc_id']
-        ec2ids = r.get_fact_cache('localhost')['ec2ids']
-        ini_parser.writeVar('ec2_server_id',ec2ids[0],'aws')
-        ini_parser.writeVar('ec2_client_id',ec2ids[1],'aws')
+        ini_parser.writeVar('ec2_server_id',r.get_fact_cache('localhost')['server_ec2_id'],'aws')
+        ini_parser.writeVar('ec2_client_id',r.get_fact_cache('localhost')['client_ec2_id'],'aws')
         ini_parser.writeVar('vpc_id',vpc_id,'aws')
-        ini_parser.writeVar('iperf3_server_host', ec2hosts[0], 'connections')
-        ini_parser.writeVar('iperf3_client_host',ec2hosts[1], 'connections')
+        ini_parser.writeVar('iperf3_server_host', r.get_fact_cache('localhost')['ext_server'], 'connections')
+        ini_parser.writeVar('iperf3_int_server',r.get_fact_cache('localhost')['int_server'], 'iperf3')
+        ini_parser.writeVar('iperf3_client_host',r.get_fact_cache('localhost')['ext_client'], 'connections')
+        ini_parser.writeVar('iperf3_int_client',r.get_fact_cache('localhost')['int_client'],'iperf3')
+        ini_parser.writeVar('region', kwargs['region'], 'aws')
+        ini_parser.writeVar('launch_mode_with_vcpu', str(kwargs['launch_mode_with_vcpu']),'aws')
+        ini_parser.writeVar('instance_type_client',kwargs['instance_type_client'], 'aws')
+        ini_parser.writeVar('instance_type_server',kwargs['instance_type_server'], 'aws')
+        if kwargs['launch_mode_with_vcpu']:
+            ini_parser.writeVar('vcpu_server',str(kwargs['vcpu_server']),'aws')
+            ini_parser.writeVar('vcpu_client', str(kwargs['vcpu_client']), 'aws')
 
-        result = f"I've deployed two ec2 instances, and assigned first with ec2-id {ec2ids[0]} to the iperf3 server with hostname {ec2hosts[0]}," \
-                 f"and the second with ec2-id {ec2ids[1]} to the iperf3 client with hostname {ec2hosts[0]} \n" \
-                 f"both are ready to launch a performance tests"
+        result = f"I've just deployed two ec2 instances, both are ready to launch a performance tests"
 
     else:
         result = "I failed ansible playbook. Installation can be partly finished. Please perform manual cleanp using your AWS console. " \
                  "to understand why it happen please launch a tool with -v (verbose) key"
     return result
+
+
+def fullTest(**kwargs):
+    def localClean():
+        print("looks like current configuration is not suitable. Clean it up")
+        cleanup()
+
+    print('determing if we need to reinstall')
+    if ready4Test():
+        print("hmm... Looks like we already have installed instances! Checking it's settings...")
+        if strtobool(ini_parser.returnVar('launch_mode_with_vcpu','aws')) == kwargs['launch_mode_with_vcpu']:
+            print(f"looks like we already installed instances in the required mode(vCpu or general instances)")
+            print("checking if types of instances is required")
+            if ini_parser.returnVar('instance_type_server','aws') == kwargs['instance_type_server'] and ini_parser.returnVar('instance_type_client','aws') == kwargs['instance_type_client']:
+                print("And instances types is also same! We just need to launch test again without any cleanups!")
+                return iperf()
+            else:
+                localClean()
+        localClean()
+    else:
+        localClean()
+    print("so, we need new a installation")
+    print("Determing the last Ubuntu 20.04 AMI image")
+    kwargs['image'] = image(kwargs['region'])
+    print(f"Selecting random VPC in the {kwargs['region']}")
+    kwargs['vpc_subnet'] = random.sample(list_subnets(kwargs['region']), 1)[0]
+    launch(**kwargs)
+    if ready4Test():
+        return iperf()
+    else:
+        print("can't launch test! System is not ready. Please clean up everything manually and launch with debug option -v again")
+
+
+def instancetest(**kwargs):
+    kwargs['launch_mode_with_vcpu'] = False
+    return fullTest(**kwargs)
+
+
+def cputest(**kwargs):
+    kwargs['launch_mode_with_vcpu'] = True
+    return fullTest(**kwargs)
 
 
 def getArgs():
@@ -170,6 +271,18 @@ def getArgs():
     launchParser.add_argument('-i', '--image', type=str,
                         help='Launch ec2 instance using selected image', required=True)
 
+    launchParser.add_argument('-t', '--instance_type_client', type=str,
+                        help='Launch ec2 instance using selected type', required=True)
+
+    launchParser.add_argument('-c', '--vcpu_client', type=int,
+                        help='Launch ec2 instance with selected amount of vCPU', required=True)
+
+    launchParser.add_argument('-T', '--instance_type_server', type=str,
+                        help='Launch ec2 instance using selected type', required=True)
+
+    launchParser.add_argument('-C', '--vcpu_server', type=int,
+                        help='Launch ec2 instance with selected amount of vCPU', required=True)
+
     getParser = subParsers.add_parser('get', parents = [rootParser], help='get current status, clean up, run tests, etc')
     getParser.add_argument('-c', '--cleanup', action='store_true',
                         help='Clean up ec2 instances')
@@ -177,6 +290,32 @@ def getArgs():
                         help='Report if tool is ready for test. Required launched and prepared two of ec2 instances')
     getParser.add_argument('-t', '--iperf', action='store_true',
                         help="Launch test itself")
+
+    cputest = subParsers.add_parser('cputest', parents = [rootParser], help='run tests and do everything underhood - user can configure vcpu and instance type')
+    cputest.add_argument('-r', '--region', type=str,
+                        help='Launch ec2 instance in the selected region', required=True)
+
+    cputest.add_argument('-t', '--instance_type_client', type=str,
+                        help='Launch ec2 instance using selected type', required=True)
+
+    cputest.add_argument('-c', '--vcpu_client', type=int,
+                        help='Launch ec2 instance with selected amount of vCPU', required=True)
+
+    cputest.add_argument('-T', '--instance_type_server', type=str,
+                        help='Launch ec2 instance using selected type', required=True)
+
+    cputest.add_argument('-C', '--vcpu_server', type=int,
+                        help='Launch ec2 instance with selected amount of vCPU', required=True)
+
+    instancetest = subParsers.add_parser('instancetest', parents=[rootParser], help='run tests and do everything underhood - user can configure instance type')
+    instancetest.add_argument('-r', '--region', type=str,
+                         help='Launch ec2 instance in the selected region', required=True)
+
+    instancetest.add_argument('-t', '--instance_type_client', type=str,
+                         help='Launch ec2 instance using selected type', required=True)
+
+    instancetest.add_argument('-T', '--instance_type_server', type=str,
+                         help='Launch ec2 instance using selected type', required=True)
 
     args = mainParser.parse_args()
 
@@ -197,8 +336,8 @@ def main():
     commandMode = argsDict['command']
     del argsDict['command']
 
-    if commandMode == 'launch':
-        output = ec2_instance_launch(**argsDict)
+    if commandMode in ('launch','cputest', 'instancetest'):
+        output = eval(commandMode)(**argsDict)
         print(f"result={output}")
 
     if commandMode == 'info':
@@ -222,3 +361,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+if __name__ == '__init__':
+    global quietPlaybooks
+    quietPlaybooks = True

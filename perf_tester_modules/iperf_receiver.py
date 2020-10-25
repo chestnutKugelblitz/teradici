@@ -30,6 +30,9 @@ def max_speed():
 
     unPickledResults = pickle.loads(pickledResults)
     traverseDataStructure(unPickledResults)
+    #print(unPickledResults)
+    #print("===")
+    #print(bitSecList)
     maxSpeed = bitSecList[0]
     maxSpeedHumanize = humanize.naturalsize(maxSpeed)
     return maxSpeed, maxSpeedHumanize

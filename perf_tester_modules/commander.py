@@ -9,6 +9,8 @@ logging.basicConfig(level = logging.DEBUG)
 
 clientHost = ini_parser.returnVar('iperf3_client_host','connections')
 serverHost = ini_parser.returnVar('iperf3_server_host','connections')
+#iperf3_int_client = ini_parser.returnVar('iperf3_client_host','iperf3')
+iperf3_int_server = ini_parser.returnVar('iperf3_int_server','iperf3')
 commandPort = int(ini_parser.returnVar('command_port', 'connections'))
 durationSecs = int(ini_parser.returnVar('duration','iperf3'))
 numStreams = int(ini_parser.returnVar('num_streams','iperf3'))
@@ -48,6 +50,7 @@ def commandWrapper(commandsDict):
     commandsDict['iperf3BindAddress'] = iperf3BindAddress
     serverPrepareResult = commandSender(commandsDict=commandsDict,host4Command=serverHost,commandPort=commandPort)
     commandsDict['mode'] = 'client'
+    commandsDict['iperf3IntServer'] = iperf3_int_server
     commandsDict['durationSecs'] = durationSecs
     commandsDict['numStreams'] = numStreams
     commandsDict['iperf3ServerHost'] = iperf3ServerHost

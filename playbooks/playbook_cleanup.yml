@@ -1,6 +1,5 @@
 ---
 - hosts: localhost
-  #collections: ansible_collections
   become: false
   connection: local
   gather_facts: False
@@ -9,11 +8,23 @@
     - name: clean up a key if exists
       ec2_key:
         state: absent
-        name: bandwidth_tester_ssh_key
+        name: "{{ ssh_key_name }}"
         region: "{{ region }}"
-        ignore_errors: yes
+        aws_access_key: "{{aws_access_key}}"
+        aws_secret_key: "{{aws_secret_key}}"
 
-    - name: open ports
+    - name: clean up AWS ec2 instances
+      amazon.aws.ec2:
+        instance_ids: '{{ item }}'
+        region: '{{ region }}'
+        state: 'absent'
+        aws_access_key: "{{aws_access_key}}"
+        aws_secret_key: "{{aws_secret_key}}"
+      with_items:
+        - "{{ ec2_server_id }}"
+        - "{{ ec2_client_id }}"
+
+    - name: clean up security group
       amazon.aws.ec2_group:
         name: "bandwidth_tester_group"
         description: bandwidth_tester security group
@@ -22,11 +33,7 @@
         aws_secret_key: "{{aws_secret_key}}"
         region: "{{ region }}"
         state: absent
-
-    - name: clean up AWS ec2 instances
-      amazon.aws.ec2:
-        instance_ids: '{{ instance_ids }}'
-        state: 'absent'
-      with_items:
-        - "{{ ec2_server_id }}"
-        - "{{ ec2_client_id }}"
+      register: cleanup_sec_group
+      retries: 20
+      delay: 5
+      until: cleanup_sec_group is not failed
