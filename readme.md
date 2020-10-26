@@ -1,12 +1,12 @@
 # AWS EC2 bandwidth tester concept program
 ## Overview
-The program able to launch banch of performance tests inside one AWS AZ (vpc subnet).
-In the frontend before the program, it has two options:
+The program is able to launch a banch of performance tests inside one AWS AZ (vpc subnet).
+The frontend of the program, has two options:
 
 * Cli interface
 * python "unittests"
 
-In the backend, it uses:
+The backend, uses:
 
 * Ansible runner python module
 * Ansible playbooks
@@ -14,14 +14,14 @@ In the backend, it uses:
 * iperf3 binary files
 * ini file as statefull configuration storage
 
-It can test performance of vpc subnet for different instance types and/or for different CPU amount for instances: program 
-supports a feature to disable part of vCPUs for AWS instances  (if AWS API support this feature to selected type of instance)
+It can test performance of vpc subnet for different instance types and/or different CPU amount for instances. Program 
+supports a feature to disable part of vCPUs for AWS instances  (if AWS API support this feature for selected type of instance)
 
 ## Installation
 ### Docker
-The easest way to install program is use Docker
+The easest way to install the program is to use Docker
 To do this, you need to git clone this repo, put your AWS credetials in the ini file, and launch a docker build. 
-As fast as you'll get a docker image, you can launch a container with program:
+As soon as you get a docker image, you can launch a container with program:
 
 ```bash
 docker build -t bandwidth_tester:0.2 .
@@ -40,10 +40,10 @@ pip3 install -r requirements.txt
 ansible-galaxy collection install amazon.aws -p ./
 ansible-galaxy collection install community.aws -p ./
 ``` 
-Next, please edit ini file. So, your program (probably) ready to launch. This program written in the Fedora/Pycharm
+Next, please edit ini file. After this the program is (probably) ready to launch. This program written in the Fedora/Pycharm
 envinronment
 
-##Using program
+## Using program
 ### cli interface
 Program's cli interface has two automatic and several manuals modes:
 
@@ -66,10 +66,12 @@ subcommands:
 
 ```
 ### cli program modes
-So, the two main modes is "cputest" and the "instancetest". You can do same things using info functions,
+The two main modes are "cputest" and the "instancetest". These are automatic modes, and they're described later.
 
 ### Launch everything manually 
-In the manual (debug) operations the most useful key is key -v(verbose). If you're using it, it shows you the ansible output like this:
+info subcommand allows you to get information from AWS cloud like available subnets or images per region.
+It can facilitate manual deployment and test launching.
+Useful option is key -v (verbose). It shows you ansible output like this:
 ```bash
 ./bandwidth_tester.py info -r -v
 {'command': 'info', 'verbose': True, 'list_regions': True, 'list_subnets': None, 'list_ami': None, 'image': None}
@@ -103,13 +105,13 @@ launch function list_subnets(us-east-2)
 result=['subnet-38750f43', 'subnet-0e9ea567', 'subnet-c236b78f']
 
 ```
-Or to launch deployment by hands, specifying any settings manually:
+Or launch deployment by hands, specifying any settings manually:
 
 ```bash
 ./bandwidth_tester.py launch -r us-east-2 -t m5.large -T m5.large -c 1 -C 1 -s subnet-38750f43 -i ami-084ef34fdfdd7384c
 
 ```
-Than, as fast as you get your system deployed, launch tests itself:
+Then, as soon as you get your system deployed, launch the tests itself:
 ```bash
 ./bandwidth_tester.py get --iperf
 send commands to puppets
@@ -127,12 +129,12 @@ I've just done a clean up job
 result=True
 
 ```
-To delete objects, which was described by program in the persistent storage for its statefull state - in the ini file
+.. to delete objects, which were described by the program in the persistent storage for its state (in the ini file)
 
 ### test AWS ec2 instances (Automatic mode)
-In this mode program launch actions, which was described above, automaticly. Also, if you launch program again with same
-keys, it will not perform a cleanUP, and deployment again, and than launch tests, it launch them directly as fast as it
-determine that it's a second launch with same params:
+In this mode program launches actions, which was described above, automaticly. Also, if you launch program again with same
+keys, it will not perform a cleanup, and deployment again, and than launch tests, it launch them directly as soon as it
+determines that it's a second launch with same params:
 
 ```bash
 ./bandwidth_tester.py instancetest -r us-east-2 -t t2.micro -T t3.micro 
@@ -150,7 +152,7 @@ or, in the human form,90.8 MB/sec
 result=90751230.73378968
 
 ```
-Another possible case is if stored configuration is not suitable. Than, program launch a clean up, do new deployment in the AWS, and then tests itself:
+Another possible case is if stored configuration is not suitable. In this case, program launches a clean up, does new deployment in the AWS, and then tests itself:
 
 ```bash
 ./bandwidth_tester.py instancetest -r us-east-2 -t t2.micro -T t3.micro 
@@ -173,8 +175,8 @@ result=100788551.09746142
 Here key -r represents an AWS region, -t - iperf3 client AWS instance type, and -T iperf3 server AWS instance type 
 
 ### Test AWS ec2 instances with selected amount of vCPU (automatic mode)
-Like previous mode, it launched all underhood functions automaticly. And it can launch tests again, if configuration is same
-This mode is supports set amount of vCPU for iperf server and clint, and type of instances as well. Example of usage:
+Like the previous mode, it launches all the underhood functions automatically. And it can launch tests again, if configuration is same
+This mode supports setting amount of vCPU for iperf server and clint, and type of instances as well. Example of usage:
 ```bash
 ./bandwidth_tester.py cputest -r us-east-2 -t m5.large -T m5.large -c 1 -C 1
 determing if we need to reinstall
@@ -189,13 +191,13 @@ result=263137298.9593556
 ```
 Here key -r represents an AWS region, -t - iperf3 client AWS instance type, and -T iperf3 server AWS instance type.
 Also, -c represents amout of vCPUs for client, and -C for server. Please note: not each AWS instance type supports this
-sort of settings! -v key can be helpful here - than ansible task to setting up instance fail, and you can see why it
-happen
+sort of settings! -v key can be helpful here - if ansible task to set up instance fails, you can see why it
+happened
 
 ### tests via python module unittest
 
-It's just proof of concept to attach them to CI/CD pipeline. By design, there are not unit tests.
-Part of them are functional tests for program, and part integrational/performance tests
+It's just proof of concept to make a tests and attach them to CI/CD pipeline.
+Part of them are functional tests for program, and part are integrational/performance tests
  
 To launch unit tests from CLI, please use a command:
 
@@ -229,14 +231,13 @@ Ran 6 tests in 305.073s
 PASSED (errors=0)
 ```
 List of tests:
-* test_regions (functional test), show list of regions)
-* test_images (functional test), check using regex, if it returns suitable image for selected region)
-* test_networks (functional test), check using regex, if it returns suitable subnet for selected region)
-* test_instances (integrational/performance test), check if speed for default t2.micro instances will be good enough)
-* test_instances (integrational/performance test), check if speed for default t2.micro instances will be good enough)
-* test_cpu (integrational/performance test), check if speed for custom m5.large instances with 1 vCPU will be good enough)
+* test_regions (functional test), show list of regions
+* test_images (functional test), check using regex, if it returns suitable image for the selected region
+* test_networks (functional test), check using regex, if it returns suitable subnet for the selected region
+* test_instances (integrational/performance test), check if speed for default t2.micro instances will be good enough
+* test_cpu (integrational/performance test), check if speed for custom m5.large instances with 1 vCPU will be good enough
 * test_standard_deviation(end-to-end/performance test) - **the most interesting test**, probably can be useful in the real
-cases, like check the standard deviation in the array of set of speeds results for the subnet/AZ
+cases, like check the standard deviation for the array of speed test results for the subnet/AZ
 
  
 ## Architecture

@@ -394,6 +394,10 @@ def getArgs():
 
 
 def main():
+    if not len(sys.argv) > 1:
+        print(f"See help: {sys.argv[0]} -h")
+        sys.exit(1)
+
     argsDict = getArgs()
     global quietPlaybooks
     if argsDict['verbose'] == True:
