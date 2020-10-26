@@ -18,10 +18,3 @@
       set_fact:
         subnets_list: "{{ subnetInfo.subnets|map(attribute='subnet_id')|list }}"
         cacheable: yes
-
-#    - name: print them
-#      #community.aws.aws_region_info:
-#      #register: regions
-#      debug:
-#        #msg: "{{ community.aws.aws_region_facts }}"
-#        msg: "{{ subnets_list }}"

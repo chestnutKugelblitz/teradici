@@ -7,18 +7,33 @@ import logging
 
 logging.basicConfig(level = logging.DEBUG)
 
-clientHost = ini_parser.returnVar('iperf3_client_host','connections')
-serverHost = ini_parser.returnVar('iperf3_server_host','connections')
-#iperf3_int_client = ini_parser.returnVar('iperf3_client_host','iperf3')
-iperf3_int_server = ini_parser.returnVar('iperf3_int_server','iperf3')
-commandPort = int(ini_parser.returnVar('command_port', 'connections'))
-durationSecs = int(ini_parser.returnVar('duration','iperf3'))
-numStreams = int(ini_parser.returnVar('num_streams','iperf3'))
-waitUntilCheck = int(ini_parser.returnVar('wait_until_check','connections'))
-iperf3ServerPort = int(ini_parser.returnVar('iperf3_server_port','iperf3'))
-iperf3BindAddress = ini_parser.returnVar('iperf3_bind_address','iperf3')
+# clientHost = ini_parser.returnVar('iperf3_client_host','connections')
+# serverHost = ini_parser.returnVar('iperf3_server_host','connections')
+# #iperf3_int_client = ini_parser.returnVar('iperf3_client_host','iperf3')
+# iperf3_int_server = ini_parser.returnVar('iperf3_int_server','iperf3')
+# commandPort = int(ini_parser.returnVar('command_port', 'connections'))
+# durationSecs = int(ini_parser.returnVar('duration','iperf3'))
+# numStreams = int(ini_parser.returnVar('num_streams','iperf3'))
+# waitUntilCheck = int(ini_parser.returnVar('wait_until_check','connections'))
+# iperf3ServerPort = int(ini_parser.returnVar('iperf3_server_port','iperf3'))
+# iperf3BindAddress = ini_parser.returnVar('iperf3_bind_address','iperf3')
+#
+# iperf3ServerHost = ini_parser.returnVar('iperf3_server_host','connections')
 
-iperf3ServerHost = ini_parser.returnVar('iperf3_server_host','connections')
+def checkVariables():
+    clientHost = ini_parser.returnVar('iperf3_client_host', 'connections')
+    serverHost = ini_parser.returnVar('iperf3_server_host', 'connections')
+    # iperf3_int_client = ini_parser.returnVar('iperf3_client_host','iperf3')
+    iperf3_int_server = ini_parser.returnVar('iperf3_int_server', 'iperf3')
+    commandPort = int(ini_parser.returnVar('command_port', 'connections'))
+    durationSecs = int(ini_parser.returnVar('duration', 'iperf3'))
+    numStreams = int(ini_parser.returnVar('num_streams', 'iperf3'))
+    waitUntilCheck = int(ini_parser.returnVar('wait_until_check', 'connections'))
+    iperf3ServerPort = int(ini_parser.returnVar('iperf3_server_port', 'iperf3'))
+    iperf3BindAddress = ini_parser.returnVar('iperf3_bind_address', 'iperf3')
+    iperf3ServerHost = ini_parser.returnVar('iperf3_server_host', 'connections')
+
+    return clientHost, serverHost, iperf3_int_server, commandPort, durationSecs, numStreams, waitUntilCheck, iperf3ServerPort, iperf3BindAddress, iperf3ServerHost
 
 
 def commandSender(commandsDict,host4Command,commandPort):
@@ -29,8 +44,11 @@ def commandSender(commandsDict,host4Command,commandPort):
     :param commandPort:
     :return: Returns True if commands had been send. And Else if can't connect (by timeout)
     """
+    # print(f"=======dump of the noosphere=======\ncommandsDict = {commandsDict}\nhost4Command:{host4Command}\ncommandPort:{commandPort}")
+    # print(f"=======dump of the noosphere=======")
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(3)
             s.connect((host4Command, commandPort))
             s.sendall(pickle.dumps(commandsDict))
         return True
@@ -42,6 +60,7 @@ def commandWrapper(commandsDict):
     :param commandsDict:
     :return: booleans: server prepare, client prepare, server ready to collect results, client ready to collect results
     """
+    clientHost, serverHost, iperf3_int_server, commandPort, durationSecs, numStreams, waitUntilCheck, iperf3ServerPort, iperf3BindAddress, iperf3ServerHost = checkVariables()
 
     if clientHost == None or serverHost == None:
         return None, None, False, False

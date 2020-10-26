@@ -4,8 +4,6 @@ import pickle
 import humanize
 from perf_tester_modules import ini_parser
 
-sender_bind_port = int(ini_parser.returnVar('data_port','connections'))
-sender_bind_address = ini_parser.returnVar('iperf3_client_host', 'connections')
 bitSecList = []
 
 def traverseDataStructure(data):
@@ -19,9 +17,12 @@ def traverseDataStructure(data):
             traverseDataStructure(val)
 
 def max_speed():
+    sender_bind_port = int(ini_parser.returnVar('data_port', 'connections'))
+    sender_bind_address = ini_parser.returnVar('iperf3_client_host', 'connections')
     pickledResults = b''
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((sender_bind_address, sender_bind_port))
+        s.settimeout(3)
         while True:
             netChunk = s.recv(1024)
             if not netChunk:

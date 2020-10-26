@@ -15,3 +15,4 @@ COPY perf_tester_modules ./perf_tester_modules
 COPY perf_tool.ini .
 COPY ansible.cfg .
 COPY playbooks ./playbooks
+COPY utest_perf.py .

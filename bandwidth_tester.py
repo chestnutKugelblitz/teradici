@@ -6,7 +6,7 @@ import sys
 from perf_tester_modules import ini_parser
 import random
 from distutils.util import strtobool
-
+import time
 
 #from perf_tester_modules import commander
 #ToDo: rewrite?
@@ -102,7 +102,7 @@ def cleanup():
         return False
 
     r = ansible_runner.run(private_data_dir='./', playbook='playbooks/playbook_cleanup.yml',quiet=quietPlaybooks, extravars={**cleanupSettings,**awsCreds, **sshCreds})
-    print(f"r.rc={r.rc}")
+    #print(f"r.rc={r.rc}")
     if r.rc == 0:
         ini_parser.deleteVar('ec2_server_id','aws')
         ini_parser.deleteVar('ec2_client_id','aws')
@@ -112,7 +112,12 @@ def cleanup():
         ini_parser.deleteVar('region','aws')
         ini_parser.deleteVar('iperf3_int_server','iperf3')
         ini_parser.deleteVar('iperf3_int_client','iperf3')
+        ini_parser.deleteVar('vcpu_server', 'aws')
+        ini_parser.deleteVar('vcpu_client', 'aws')
+        ini_parser.deleteVar('instance_type_client','aws')
+        ini_parser.deleteVar('instance_type_server','aws')
         ini_parser.writeVar('ready4test', 'False', 'connections')
+
         print("I've just done a clean up job")
         return True
     else:
@@ -130,10 +135,15 @@ def sendCommands2Puppet():
         sampleDict = {}
         commandsResult = []
         print("send commands to puppets")
+        time.sleep(2)
+        # commandsResult = commander.commandWrapper(sampleDict)
+        # print(f"clientPrepareResult: {commandsResult[0]}, {commandsResult[1]}, {commandsResult[2]}, {commandsResult[3]}")
+        # time.sleep(5)
+        # print("send commands to puppets")
         commandsResult = commander.commandWrapper(sampleDict)
         if False in commandsResult:
             result = f"Something wrong in the process of sending commands. Details:\n " \
-                     f"clientPrepareResult: {commandsResult[0]}, serverPrepareResult {1}, clientResult {2}, serverResult {3}"
+                     f"clientPrepareResult: {commandsResult[0]}, {commandsResult[1]}, {commandsResult[2]}, {commandsResult[3]}"
             status = False
 
         else:
@@ -165,7 +175,7 @@ def ready4Test():
     iniOptions.append(ini_parser.returnVar('iperf3_int_server', 'iperf3'))
     iniOptions.append(ini_parser.returnVar('iperf3_int_client', 'iperf3'))
     if None in iniOptions:
-        return False
+        return None
     else:
         if strtobool(iniOptions[0]):
             return True
@@ -211,30 +221,91 @@ def fullTest(**kwargs):
         print("looks like current configuration is not suitable. Clean it up")
         cleanup()
 
-    print('determing if we need to reinstall')
-    if ready4Test():
+    def localInstall():
+        print("so, we need new a installation")
+        print("Determing the last Ubuntu 20.04 AMI image")
+        kwargs['image'] = image(kwargs['region'])
+        print(f"Selecting random VPC in the {kwargs['region']}")
+        kwargs['vpc_subnet'] = random.sample(list_subnets(kwargs['region']), 1)[0]
+        launch(**kwargs)
+
+    def reinstallReqChecker():
         print("hmm... Looks like we already have installed instances! Checking it's settings...")
+        needReinstall = False
+        #print('debug1')
+        if ini_parser.returnVar('instance_type_server', 'aws') == kwargs['instance_type_server'] \
+                and ini_parser.returnVar('instance_type_client', 'aws') == kwargs['instance_type_client']:
+            print("instances types are same!")
+            #print('debug2')
+        else:
+            print("instance types are not same!")
+            needReinstall = True
+            #print('debug3')
+
+        if ini_parser.returnVar('region','aws') == kwargs['region']:
+            print("Regions is same!")
+            #print('debug4')
+        else:
+            print("region is not same!")
+            needReinstall = True
+            #print('debug5')
+        #print(f"debug. ini: {ini_parser.returnVar('launch_mode_with_vcpu','aws')}, kwargs: {kwargs['launch_mode_with_vcpu']}")
         if strtobool(ini_parser.returnVar('launch_mode_with_vcpu','aws')) == kwargs['launch_mode_with_vcpu']:
+        #if strtobool(ini_parser.returnVar('launch_mode_with_vcpu', 'aws')) == kwargs['launch_mode_with_vcpu']:
             print(f"looks like we already installed instances in the required mode(vCpu or general instances)")
-            print("checking if types of instances is required")
-            if ini_parser.returnVar('instance_type_server','aws') == kwargs['instance_type_server'] and ini_parser.returnVar('instance_type_client','aws') == kwargs['instance_type_client']:
-                print("And instances types is also same! We just need to launch test again without any cleanups!")
-                return iperf()
-            else:
-                localClean()
-        localClean()
+            #print('debug6')
+            # print(f"debug vcpu amount: {ini_parser.returnVar('vcpu_server', 'aws')}")
+            #print('debug6.6')
+            # print(f"debug vcpu_amount: {kwargs['vcpu_server']}")
+            if kwargs['launch_mode_with_vcpu'] == True:
+                if int(ini_parser.returnVar('vcpu_server', 'aws')) == kwargs['vcpu_server'] and int(ini_parser.returnVar('vcpu_client','aws')) == kwargs['vcpu_client']:
+                    print('we have same amount of vCpus in both - client and server!')
+                    #print('debug7')
+                else:
+                    #print('vCPU amount mistmatch!')
+                    needReinstall = True
+
+        else:
+            print("looks like we have a different mode here!")
+            needReinstall = True
+            #print('debug9')
+        #print('debug10')
+        return needReinstall
+
+
+    print('determing if we need to reinstall')
+    readyStatus = ready4Test()
+    #print(1)
+    if readyStatus:
+        print("hmm... Looks like we already have installed instances! Checking it's settings...")
+        #print("0.1")
+        if reinstallReqChecker():
+            #print("0.2")
+            localClean()
+            localInstall()
+            #return iperf()
+        else:
+            #print("0.3")
+            print("so, our previous configuration is good enough for us. Do nothing, just launch tests")
+            return iperf()
+            #return iperf()
+
+    elif readyStatus == None:
+        print("looks like configuration is inconsitent, but we can't launch a cleanup. We need a new installation")
+        #print("0.4")
+        localInstall()
+        #return iperf()
     else:
+        #print("0.5")
+        print("our configuration is not ready. Perform cleaning.")
         localClean()
-    print("so, we need new a installation")
-    print("Determing the last Ubuntu 20.04 AMI image")
-    kwargs['image'] = image(kwargs['region'])
-    print(f"Selecting random VPC in the {kwargs['region']}")
-    kwargs['vpc_subnet'] = random.sample(list_subnets(kwargs['region']), 1)[0]
-    launch(**kwargs)
-    if ready4Test():
-        return iperf()
-    else:
-        print("can't launch test! System is not ready. Please clean up everything manually and launch with debug option -v again")
+        localInstall()
+    #print(8)
+    #print("0.6")
+    # if ready4Test():
+    return iperf()
+    # else:
+    #     print("can't launch test! System is not ready. Please clean up everything manually and launch with debug option -v again")
 
 
 def instancetest(**kwargs):
@@ -324,14 +395,15 @@ def getArgs():
 
 def main():
     argsDict = getArgs()
-    print(f"{argsDict}")
-
     global quietPlaybooks
     if argsDict['verbose'] == True:
         quietPlaybooks = False
     else:
         quietPlaybooks = True
     del argsDict['verbose']
+
+    if quietPlaybooks is False:
+        print(f"launch arguments of program is: {argsDict}")
 
     commandMode = argsDict['command']
     del argsDict['command']
